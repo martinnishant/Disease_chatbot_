@@ -1,28 +1,27 @@
-from fastapi import FastAPI
-from pydantic import BaseModel
-import pandas as pd
-import joblib, json, numpy as np
+import streamlit as st
+import requests
 
-app = FastAPI(title="AI Disease Chatbot")
+st.set_page_config(page_title="AI Doctor Chatbot 🩺", page_icon="💬")
+st.title("AI Doctor Chatbot 🩺")
+st.write("Enter your symptoms below to get an AI-generated health summary.")
 
-# Load model and metadata
-clf = joblib.load("models/disease_rf.pkl")
-le = joblib.load("models/label_encoder.pkl")
-sym_cols = pd.Index(json.loads(open("models/symptom_columns.json").read()))
+symptoms_input = st.text_input("Symptoms (comma-separated):", "fatigue, cough, shortness of breath")
 
-class Symptoms(BaseModel):
-    symptoms: list[str]
-    top_n: int | None = 3
-
-@app.get("/")
-def home():
-    return {"message": "AI Disease Chatbot API is running!"}
-
-@app.post("/predict")
-def predict(data: Symptoms):
-    x = pd.DataFrame([[1 if c in data.symptoms else 0 for c in sym_cols]], columns=sym_cols)
-    probs = clf.predict_proba(x)[0]
-    idxs = np.argsort(probs)[-data.top_n:][::-1]
-    labels = le.inverse_transform(idxs).tolist()
-    confs = [float(probs[i]) for i in idxs]
-    return {"predictions": [{"disease": l, "confidence": round(c, 4)} for l, c in zip(labels, confs)]}
+if st.button("Analyze"):
+    payload = {
+        "symptoms": [s.strip() for s in symptoms_input.split(",")],
+        "top_n": 3
+    }
+    response = requests.post("http://127.0.0.1:8000/chat_diagnose", json=payload)
+    if response.status_code == 200:
+        data = response.json()["diagnosis"]
+        st.subheader("🩺 Summary")
+        st.write(data["summary"])
+        st.subheader("⚠️ Common Causes")
+        st.write(data["common_causes"])
+        st.subheader("💊 Treatment & Care")
+        st.write(data["treatment_and_care"])
+        st.subheader("📞 When to See a Doctor")
+        st.write(data["when_to_see_doctor"])
+    else:
+        st.error("Error fetching diagnosis.")
